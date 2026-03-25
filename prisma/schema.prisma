@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  name      String?
+  password  String?
+  createdAt DateTime  @default(now())
+  provider  String    @default("local")
+  boards    Board[]
+  comments  Comment[]
+}
+
+model Board {
+  id        String   @id @default(uuid())
+  title     String
+  ownerId   String
+  createdAt DateTime @default(now())
+  owner     User     @relation(fields: [ownerId], references: [id])
+  columns   Column[]
+}
+
+model Column {
+  id       String @id @default(uuid())
+  title    String
+  position Int
+  boardId  String
+  cards    Card[]
+  board    Board  @relation(fields: [boardId], references: [id])
+}
+
+model Card {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  position    Int
+  columnId    String
+  createdAt   DateTime  @default(now())
+  column      Column    @relation(fields: [columnId], references: [id])
+  comments    Comment[]
+
+  @@index([columnId])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  userId    String
+  cardId    String
+  createdAt DateTime @default(now())
+  card      Card     @relation(fields: [cardId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+}
