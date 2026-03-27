@@ -123,4 +123,57 @@ export class AuthService {
 
     return { accessToken, refreshToken };
   }
+
+  async sendOtp(email: string) {
+    // 1. tạo mã OTP
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // 2. lưu DB
+    await this.prisma.otp.create({
+      data: {
+        email,
+        code,
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 phút
+      },
+    });
+
+    // 3. gửi email (tạm log)
+    console.log('OTP:', code);
+    return { message: 'OTP sent to email' };
+  }
+
+  async verifyOtp(email: string, code: string) {
+    const otp = await this.prisma.otp.findFirst({
+      where: { email, code },
+    });
+
+    if (!otp) throw new Error('Invalid OTP');
+
+    if (otp.expiresAt < new Date()) {
+      throw new Error('OTP expired');
+    }
+
+    // Xóa OTP sau khi dùng
+    await this.prisma.otp.delete({
+      where: { id: otp.id },
+    });
+
+    // 1. check user
+    let user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    // 2. chưa có → tạo mới
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          provider: 'otp',
+        },
+      });
+    }
+
+    // 3. trả token
+    return this.generateTokens(user);
+  }
 }

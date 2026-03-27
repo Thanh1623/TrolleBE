@@ -78,4 +78,14 @@ export class AuthController {
   me(@Req() req: Request) {
     return req.user;
   }
+
+  @Post('send-email')
+  sendEmail(@Body('email') email: string) {
+    return this.authService.sendOtp(email);
+  }
+
+  @Post('verify-otp')
+  verifyOtp(@Body() body: { email: string; otp: string }) {
+    return this.authService.verifyOtp(body.email, body.otp);
+  }
 }
