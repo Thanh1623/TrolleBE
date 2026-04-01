@@ -8,7 +8,7 @@ export class JwtCookieGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
 
-    const token = request.cookies['accessToken'];
+    const token = request.cookies?.accessToken;
 
     if (!token) return false;
 
