@@ -14,8 +14,14 @@ export class AuthService {
 
   generateTokens(user) {
     return {
-      accessToken: this.jwtService.sign({ sub: user.id }),
-      refreshToken: this.jwtService.sign({ sub: user.id }, { expiresIn: '7d' }),
+      accessToken: this.jwtService.sign({
+        sub: user.id,
+        email: user.email,
+      }),
+      refreshToken: this.jwtService.sign(
+        { sub: user.id, email: user.email },
+        { expiresIn: '7d' },
+      ),
     };
   }
 
@@ -125,10 +131,8 @@ export class AuthService {
   }
 
   async sendOtp(email: string) {
-    // 1. tạo mã OTP
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // 2. lưu DB
     await this.prisma.otp.create({
       data: {
         email,
@@ -137,7 +141,6 @@ export class AuthService {
       },
     });
 
-    // 3. gửi email (tạm log)
     console.log('OTP:', code);
     return { message: 'OTP sent to email' };
   }
@@ -153,17 +156,14 @@ export class AuthService {
       throw new Error('OTP expired');
     }
 
-    // Xóa OTP sau khi dùng
     await this.prisma.otp.delete({
       where: { id: otp.id },
     });
 
-    // 1. check user
     let user = await this.prisma.user.findUnique({
       where: { email },
     });
 
-    // 2. chưa có → tạo mới
     if (!user) {
       user = await this.prisma.user.create({
         data: {
@@ -173,7 +173,22 @@ export class AuthService {
       });
     }
 
-    // 3. trả token
     return this.generateTokens(user);
+  }
+
+  async refreshToken(token: string) {
+    try {
+      const payload = this.jwtService.verify(token);
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+      });
+
+      if (!user) throw new Error('User not found');
+
+      return this.generateTokens(user);
+    } catch (e) {
+      throw new Error('Invalid refresh token', { cause: e });
+    }
   }
 }

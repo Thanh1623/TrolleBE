@@ -5,6 +5,7 @@ import {
   Post,
   Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
@@ -13,6 +14,7 @@ import { RegisterDto } from './dto/register.dto/register.dto';
 import { GoogleAuthGuard } from 'src/modules/auth/google-auth.guard';
 import type { Request, Response } from 'express';
 import { ContinueDto } from './dto/continue.dto/continue.dto';
+import { JwtCookieGuard } from 'src/modules/auth/jwt-cookie.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -63,29 +65,97 @@ export class AuthController {
 
   @Get('google/redirect')
   @UseGuards(GoogleAuthGuard)
-  async googleRedirect(@Req() req: Request, @Res() res: Response) {
+  async googleRedirect(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const user = req.user;
 
     const tokens = await this.authService.handleGoogleLogin(user);
 
+    res.cookie('accessToken', tokens.accessToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+    });
+
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
     });
 
     return res.redirect('http://localhost:5173');
   }
-  @Get('me')
-  me(@Req() req: Request) {
-    return req.user;
-  }
-
   @Post('send-email')
   sendEmail(@Body('email') email: string) {
     return this.authService.sendOtp(email);
   }
 
   @Post('verify-otp')
-  verifyOtp(@Body() body: { email: string; otp: string }) {
-    return this.authService.verifyOtp(body.email, body.otp);
+  async verifyOtp(
+    @Body() body: { email: string; otp: string },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const tokens = await this.authService.verifyOtp(body.email, body.otp);
+
+    res.cookie('accessToken', tokens.accessToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      maxAge: 1000 * 60 * 60, // 1h
+    });
+
+    res.cookie('refreshToken', tokens.refreshToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      maxAge: 1000 * 60 * 60 * 24 * 7,
+    });
+
+    return tokens;
+  }
+
+  @Post('logout')
+  logout(@Res({ passthrough: true }) res: Response) {
+    res.clearCookie('accessToken');
+    res.clearCookie('refreshToken');
+    return { message: 'Logged out' };
+  }
+
+  @Post('refresh')
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = req.cookies['refreshToken'];
+
+    if (!refreshToken) {
+      throw new UnauthorizedException('No refresh token');
+    }
+
+    const tokens = await this.authService.refreshToken(refreshToken);
+
+    res.cookie('accessToken', tokens.accessToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      maxAge: 1000 * 60 * 15,
+    });
+
+    res.cookie('refreshToken', tokens.refreshToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      maxAge: 1000 * 60 * 60 * 24 * 7,
+    });
+
+    return { message: 'refreshed' };
+  }
+
+  @UseGuards(JwtCookieGuard)
+  @Get('me')
+  me(@Req() req: Request) {
+    return req.user;
   }
 }
